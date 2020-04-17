@@ -21,9 +21,9 @@ class CreateTransactionService {
   }: Request): Promise<Transaction> {
     const transactionsRepository = getCustomRepository(TransactionsRepository);
 
-    const balance = transactionsRepository.getBalance();
+    const balance = await transactionsRepository.getBalance();
 
-    if (type === 'outcome' && value > (await balance).total) {
+    if (type === 'outcome' && value > balance.total) {
       throw new AppError('Valor de saída maior que o saldo total', 400);
     }
 
