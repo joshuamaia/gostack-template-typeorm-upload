@@ -10,79 +10,48 @@ interface Request {
   fileName: string;
 }
 
-class ImportTransactionsService {
-  private transactions: Transaction[] = [];
+interface TransactionCSV {
+  title: string;
+  value: number;
+  type: 'income' | 'outcome';
+  category: string;
+}
 
+class ImportTransactionsService {
   async execute({ fileName }: Request): Promise<Transaction[]> {
     const pathFile = path.join(uploadConfig.directory, fileName);
-
+    const transactions: Transaction[] = [];
+    const csvTransactions: TransactionCSV[] = [];
     const pathFileExists = await fs.promises.stat(pathFile);
     if (!pathFileExists) {
       throw new AppError('Arquivo não existe', 404);
     }
 
-    const file = fs.readFileSync(pathFile, 'utf8');
+    const stream = fs
+      .createReadStream(pathFile)
+      .on('error', () => {
+        throw new AppError('Error import File');
+      })
 
-    const fileCsvSplit = file.split('\n');
+      .pipe(csv({ columns: true, trim: true }))
+      .on('data', async row => {
+        csvTransactions.push(row);
+      });
+
+    await new Promise(resolver => {
+      fs.promises.unlink(pathFile);
+      stream.on('end', resolver);
+    });
+
     const createTransactionService = new CreateTransactionService();
 
-    let isFirst = true;
+    for (const item of csvTransactions) {
+      const transaction = await createTransactionService.execute(item);
 
-    for (const fileCsv of fileCsvSplit) {
-      if (isFirst) {
-        isFirst = false;
-        continue;
-      }
-      const row = fileCsv.split(',');
-
-      if (row.length === 4) {
-        const title = row[0];
-        const type = row[1];
-        const valueString = row[2];
-        const value = Number(valueString.trim());
-        const category = row[3];
-        const transaction = await createTransactionService.execute({
-          title: title.trim(),
-          value,
-          type: type.trim() === 'income' ? 'income' : 'outcome',
-          category: category.trim(),
-        });
-
-        this.transactions.push(transaction);
-      }
+      transactions.push(transaction);
     }
 
-    return this.transactions;
-  }
-
-  async processCsv(pathFile: string): Promise<void> {
-    let isFirst = true;
-    const createTransactionService = new CreateTransactionService();
-
-    fs.createReadStream(pathFile)
-      .pipe(csv())
-      .on('data', async row => {
-        if (isFirst) {
-          isFirst = false;
-        } else {
-          console.log(row);
-          const title = row[0];
-          const type = row[1];
-          const valueString = row[2];
-          const value = Number(valueString.trim());
-          const category = row[3];
-          const transaction = await createTransactionService.execute({
-            title: title.trim(),
-            value,
-            type: type.trim() === 'income' ? 'income' : 'outcome',
-            category: category.trim(),
-          });
-
-          this.transactions.push(transaction);
-
-          console.log(this.transactions);
-        }
-      });
+    return transactions;
   }
 }
 
