@@ -36,8 +36,6 @@ class ImportTransactionsService {
       const row = fileCsv.split(',');
 
       if (row.length === 4) {
-        console.log(row);
-
         const title = row[0];
         const type = row[1];
         const valueString = row[2];
